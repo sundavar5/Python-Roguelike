@@ -50,57 +50,64 @@ class CombatSystem:
     def player_attack(self) -> Dict[str, Any]:
         """Player attacks the enemy"""
         if not self.is_active or not self.player_turn:
-            return {'success': False, 'message': 'Not your turn!'}
-        
+            return {'hit': False, 'damage': 0, 'critical': False}
+
         # Player attacks
         attack_result = self.player.attack(self.enemy)
-        
+
         if attack_result['hit']:
             damage = self.enemy.take_damage(attack_result['damage'])
-            
+
             if attack_result['critical']:
                 self.add_to_log(f"Critical hit! You deal {damage} damage to {self.enemy.name}!")
             else:
                 self.add_to_log(f"You hit {self.enemy.name} for {damage} damage!")
-            
+
             # Check if enemy is defeated
             if not self.enemy.is_alive:
                 self.add_to_log(f"You defeated {self.enemy.name}!")
-                return {'success': True, 'result': 'victory'}
+
+            # Enemy's turn
+            self.player_turn = False
+            return {'hit': True, 'damage': damage, 'critical': attack_result['critical']}
         else:
             self.add_to_log(f"You miss {self.enemy.name}!")
-        
+
         # Enemy's turn
         self.player_turn = False
-        return {'success': True, 'result': 'continue'}
+        return {'hit': False, 'damage': 0, 'critical': False}
     
     def enemy_attack(self) -> Dict[str, Any]:
         """Enemy attacks the player"""
         if not self.is_active or self.player_turn:
-            return {'success': False, 'message': 'Not enemy turn!'}
-        
+            return {'hit': False, 'damage': 0, 'critical': False}
+
         # Enemy attacks
         attack_result = self.enemy.attack(self.player)
-        
+
         if attack_result['hit']:
             damage = self.player.take_damage(attack_result['damage'])
-            
+
             if attack_result['critical']:
                 self.add_to_log(f"{self.enemy.name} critically hits you for {damage} damage!")
             else:
                 self.add_to_log(f"{self.enemy.name} hits you for {damage} damage!")
-            
+
             # Check if player is defeated
-            if not self.player.is_alive:
+            if not self.player.is_alive():
                 self.add_to_log("You have been defeated!")
-                return {'success': True, 'result': 'defeat'}
+
+            # Player's turn
+            self.player_turn = True
+            self.round += 1
+            return {'hit': True, 'damage': damage, 'critical': attack_result.get('critical', False)}
         else:
             self.add_to_log(f"{self.enemy.name} misses you!")
-        
+
         # Player's turn
         self.player_turn = True
         self.round += 1
-        return {'success': True, 'result': 'continue'}
+        return {'hit': False, 'damage': 0, 'critical': False}
     
     def player_use_item(self, item_index: int) -> Dict[str, Any]:
         """Player uses an item from inventory"""
@@ -196,9 +203,25 @@ class CombatSystem:
     def get_combat_options(self) -> List[str]:
         """Get available combat options for the player"""
         options = ['Attack', 'Flee']
-        
+
         # Add item usage if player has usable items
-        if self.player.inventory.get_non_none_items():
+        if self.player and self.player.inventory.get_non_none_items():
             options.append('Use Item')
-        
+
         return options
+
+    def is_player_turn(self) -> bool:
+        """Check if it's the player's turn"""
+        return self.is_active and self.player_turn
+
+    def is_combat_active(self) -> bool:
+        """Check if combat is currently active"""
+        return self.is_active
+
+    def try_flee(self) -> bool:
+        """Try to flee from combat"""
+        result = self.player_flee()
+        if result.get('result') == 'flee':
+            self.end_combat()
+            return True
+        return False

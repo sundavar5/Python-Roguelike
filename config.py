@@ -7,22 +7,33 @@ from pathlib import Path
 
 class Config:
     """Game configuration constants"""
-    
+
     # Screen settings
-    SCREEN_WIDTH = 1200
+    SCREEN_WIDTH = 1280
     SCREEN_HEIGHT = 800
     FPS = 60
-    
+
     # Game settings
     GAME_TITLE = "Dungeon Delver"
-    VERSION = "1.0.0"
-    
+    VERSION = "2.0.0"
+
     # Tile and map settings
     TILE_SIZE = 32
-    MAP_WIDTH = 40
-    MAP_HEIGHT = 25
+    MAP_WIDTH = 50
+    MAP_HEIGHT = 35
     VIEWPORT_WIDTH = 25
     VIEWPORT_HEIGHT = 20
+
+    # Animation settings
+    ANIMATION_SPEED = 0.15  # Seconds per movement
+    IDLE_ANIMATION_SPEED = 8  # Frames between idle animation updates
+    ENABLE_SMOOTH_MOVEMENT = True
+    ENABLE_ANIMATIONS = True
+
+    # Rendering settings
+    USE_SPRITES = True  # Use graphical sprites instead of text
+    RENDER_SHADOWS = True
+    AMBIENT_LIGHT = 0.3  # Darkness level for unexplored areas
     
     # Colors (R, G, B)
     BLACK = (0, 0, 0)

@@ -52,6 +52,9 @@ class Dungeon:
     
     def generate(self):
         """Generate the dungeon layout"""
+        # Reset tiles
+        self.tiles = [[Tile('wall') for _ in range(self.height)] for _ in range(self.width)]
+        self.rooms.clear()
         self._generate_rooms()
         self._connect_rooms()
         self._place_stairs()
@@ -320,7 +323,6 @@ class Dungeon:
             elif tile.type == 'open_door':
                 return "'"
             elif tile.type == 'stairs':
-                return Config.STAIRS_COLOR
                 return '>'
             elif tile.type == 'trap':
                 return '^'
