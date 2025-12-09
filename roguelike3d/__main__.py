@@ -1,5 +1,4 @@
-from roguelike3d import RoguelikeApp
-
+from .app import RoguelikeApp
 
 def main() -> None:
     app = RoguelikeApp()
