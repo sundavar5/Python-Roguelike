@@ -24,7 +24,7 @@ def main():
         
         # Set up the display
         screen = pygame.display.set_mode((Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT))
-        pygame.display.set_caption("Dungeon Delver - Roguelike Adventure")
+        pygame.display.set_caption(f"{Config.GAME_TITLE} v{Config.VERSION}")
         
         # Create and run the game
         game = Game(screen)
