@@ -10,7 +10,6 @@ from config import Config
 from player import Player
 from dungeon import Dungeon
 from ui import UI
-from combat import CombatSystem
 from inventory import Inventory
 from utils import Vector2, Dice
 
@@ -39,13 +38,20 @@ class Game:
         self.player = None
         self.dungeon = None
         self.ui = None
-        self.combat_system = None
         self.camera = Vector2(0, 0)
 
         # Input handling
         self.keys_pressed = set()
         self.last_input_time = 0
         self.input_delay = 120  # milliseconds between moves
+
+        # Real-time combat and movement tuning
+        self.player_speed = 6.0  # tiles per second
+        self.attack_cooldown = 400  # milliseconds between player attacks
+        self.last_attack_time = 0
+        self.enemy_move_delay = 300  # milliseconds between enemy steps
+        self.enemy_attack_delay = 800  # milliseconds between enemy attacks
+        self.last_enemy_update = 0
 
         # Delta time tracking
         self.last_frame_time = pygame.time.get_ticks()
@@ -88,7 +94,6 @@ class Game:
             self.player.position = Vector2(spawn_x, spawn_y)
 
         # Initialize other systems
-        self.combat_system = CombatSystem()
         self.ui = UI(self.screen, self.player, self.dungeon)
 
         # Update visibility around player
@@ -101,7 +106,7 @@ class Game:
 
         # Add welcome message
         self.ui.add_message(f"Welcome to Dungeon Level {self.dungeon.current_level}!", Config.YELLOW)
-        self.ui.add_message("Use ARROW KEYS to move, I for inventory.", Config.UI_TEXT)
+        self.ui.add_message("Move freely with WASD/ARROWS, press SPACE or click to attack nearby foes.", Config.UI_TEXT)
 
         # Set game state to menu (or playing if you want to skip menu)
         self.state = GameState.MENU
@@ -158,11 +163,7 @@ class Game:
                 if event.button == 1:  # Left click
                     self.handle_mouse_click(event.pos)
 
-        # Handle continuous movement (only when not animating)
-        if self.state == GameState.PLAYING:
-            if current_time - self.last_input_time > self.input_delay:
-                if not self.ui.player_animation.active:
-                    self.handle_continuous_movement()
+        # Continuous movement handled in update loop
 
     def handle_menu_input(self, event):
         """Handle input in menu state"""
@@ -180,9 +181,8 @@ class Game:
         elif event.key == pygame.K_ESCAPE:
             self.state = GameState.PAUSED
         elif event.key == pygame.K_SPACE or event.key == pygame.K_PERIOD:
-            # Wait a turn
-            self.ui.add_message("You wait...", Config.GRAY)
-            self.update_enemies()
+            # Melee attack
+            self.perform_player_attack()
         elif event.key == pygame.K_GREATER or (event.key == pygame.K_PERIOD and pygame.K_LSHIFT in self.keys_pressed):
             # Descend stairs
             self.try_use_stairs(down=True)
@@ -207,18 +207,8 @@ class Game:
 
     def handle_combat_input(self, event):
         """Handle input during combat"""
-        if not self.combat_system.is_player_turn():
-            return
-
-        if event.key == pygame.K_1 or event.key == pygame.K_a or event.key == pygame.K_SPACE:
-            # Attack
-            self.execute_combat_action("Attack")
-        elif event.key == pygame.K_2 or event.key == pygame.K_f:
-            # Flee
-            self.execute_combat_action("Flee")
-        elif event.key == pygame.K_3 or event.key == pygame.K_u:
-            # Use item
-            self.execute_combat_action("Use Item")
+        # Legacy stub - combat is handled in real time now
+        return
 
     def handle_game_over_input(self, event):
         """Handle input in game over state"""
@@ -240,6 +230,8 @@ class Game:
             if clicked_slot is not None:
                 # Item was selected
                 pass
+        elif self.state == GameState.PLAYING:
+            self.perform_player_attack()
 
     def handle_continuous_movement(self):
         """Handle smooth movement when keys are held down"""
@@ -265,7 +257,15 @@ class Game:
             direction = Config.DIRECTIONS['RIGHT']
 
         if direction:
-            self.move_player(direction)
+            move_step = Vector2(direction[0], direction[1]).normalized * (self.player_speed * self.dt)
+            new_pos = Vector2(self.player.position.x + move_step.x, self.player.position.y + move_step.y)
+
+            # Prevent moving through walls by checking intended tile
+            if self.dungeon.is_walkable(int(new_pos.x), int(new_pos.y)):
+                self.player.position = new_pos
+                self.ui.update_camera(self.player.position.x, self.player.position.y)
+                self.dungeon.update_visibility(self.player.position)
+
             self.last_input_time = pygame.time.get_ticks()
 
     def move_player(self, direction):
@@ -279,35 +279,33 @@ class Game:
             # Check for enemies at the destination
             enemy = self.dungeon.get_enemy_at(new_x, new_y)
             if enemy:
-                # Start combat
-                self.start_combat(enemy)
-            else:
-                # Move the player with animation
-                new_pos = Vector2(new_x, new_y)
-                self.ui.start_player_move_animation(old_pos, new_pos)
-                self.player.position = new_pos
+                # Attack instead of switching to a combat state
+                self.perform_player_attack(enemy)
+                return
 
-                # Update camera
-                self.ui.update_camera(self.player.position.x, self.player.position.y)
+            # Move the player with animation
+            new_pos = Vector2(new_x, new_y)
+            self.ui.start_player_move_animation(old_pos, new_pos)
+            self.player.position = new_pos
 
-                # Update visibility
-                self.dungeon.update_visibility(self.player.position)
+            # Update camera
+            self.ui.update_camera(self.player.position.x, self.player.position.y)
 
-                # Check for items
-                item = self.dungeon.get_item_at(new_x, new_y)
-                if item:
-                    if self.player.inventory.add_item(item):
-                        self.dungeon.remove_item(new_x, new_y)
-                        self.ui.add_message(f"Picked up {item.name}", Config.YELLOW)
-                    else:
-                        self.ui.add_message("Inventory full!", Config.RED)
+            # Update visibility
+            self.dungeon.update_visibility(self.player.position)
 
-                # Check for stairs
-                if self.dungeon.is_stairs(new_x, new_y):
-                    self.ui.add_message("You see stairs here. Press > to descend or < to ascend.", Config.UI_HIGHLIGHT)
+            # Check for items
+            item = self.dungeon.get_item_at(new_x, new_y)
+            if item:
+                if self.player.inventory.add_item(item):
+                    self.dungeon.remove_item(new_x, new_y)
+                    self.ui.add_message(f"Picked up {item.name}", Config.YELLOW)
+                else:
+                    self.ui.add_message("Inventory full!", Config.RED)
 
-                # Update enemies
-                self.update_enemies()
+            # Check for stairs
+            if self.dungeon.is_stairs(new_x, new_y):
+                self.ui.add_message("You see stairs here. Press > to descend or < to ascend.", Config.UI_HIGHLIGHT)
         else:
             # Can't move there
             pass
@@ -398,94 +396,92 @@ class Game:
                 self.dungeon.items.append((self.player.position.copy(), item))
                 self.ui.add_message(f"Dropped {item.name}", Config.GRAY)
 
-    def start_combat(self, enemy):
-        """Start combat with an enemy"""
-        self.state = GameState.COMBAT
-        self.combat_system.start_combat(self.player, enemy)
-        self.ui.add_message(f"Combat started with {enemy.name}!", Config.RED)
-        self.ui.add_effect('hit', (int(enemy.position.x), int(enemy.position.y)))
-
-    def execute_combat_action(self, action):
-        """Execute a combat action"""
-        if action == "Attack":
-            result = self.combat_system.player_attack()
-            if result['hit']:
-                damage_msg = f"You hit for {result['damage']} damage!"
-                if result['critical']:
-                    damage_msg = f"CRITICAL! {damage_msg}"
-                self.ui.add_message(damage_msg, Config.GREEN)
-            else:
-                self.ui.add_message("You missed!", Config.GRAY)
-        elif action == "Flee":
-            if self.combat_system.try_flee():
-                self.ui.add_message("You escaped!", Config.YELLOW)
-                self.state = GameState.PLAYING
-                return
-            else:
-                self.ui.add_message("Failed to escape!", Config.RED)
-        elif action == "Use Item":
-            # TODO: Implement item usage in combat
-            self.ui.add_message("No items available.", Config.GRAY)
+    def perform_player_attack(self, target=None):
+        """Perform a free-form melee attack against nearby enemies"""
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_attack_time < self.attack_cooldown:
             return
 
-        # Enemy turn
-        self.process_enemy_turn()
+        self.last_attack_time = current_time
 
-    def process_enemy_turn(self):
-        """Process the enemy's turn in combat"""
-        if not self.combat_system.is_combat_active():
+        if target is None:
+            # Find closest enemy in melee range
+            enemies_in_range = [
+                enemy for enemy in self.dungeon.enemies
+                if enemy.is_alive and enemy.distance_to(self.player.position) <= 1.5
+            ]
+            target = enemies_in_range[0] if enemies_in_range else None
+
+        if not target:
+            self.ui.add_message("You swing at nothing.", Config.GRAY)
             return
 
-        result = self.combat_system.enemy_attack()
+        result = self.player.attack(target)
         if result['hit']:
-            damage_msg = f"{self.combat_system.enemy.name} hits you for {result['damage']} damage!"
+            damage = target.take_damage(result['damage'])
+            hit_text = f"You hit {target.name} for {damage} damage!"
             if result['critical']:
-                damage_msg = f"CRITICAL! {damage_msg}"
-            self.ui.add_message(damage_msg, Config.RED)
+                hit_text = f"CRITICAL! {hit_text}"
+            self.ui.add_message(hit_text, Config.GREEN)
+            if not target.is_alive:
+                self.finish_enemy_defeat(target)
         else:
-            self.ui.add_message(f"{self.combat_system.enemy.name} missed!", Config.GRAY)
+            self.ui.add_message("Your attack misses!", Config.GRAY)
 
-        # Check for combat end
-        self.check_combat_end()
+    def finish_enemy_defeat(self, enemy):
+        """Handle rewards and cleanup after an enemy falls"""
+        xp_gained = enemy.xp_reward
+        self.player.gain_experience(xp_gained)
+        self.player.total_kills += 1
 
-    def check_combat_end(self):
-        """Check if combat has ended"""
+        self.ui.add_message(f"Defeated {enemy.name}! Gained {xp_gained} XP.", Config.YELLOW)
+
+        # Remove enemy from dungeon
+        self.dungeon.remove_enemy(enemy)
+
+        # Drop loot
+        gold_drop = Dice.roll_range(enemy.gold_reward[0], enemy.gold_reward[1])
+        self.player.inventory.gold += gold_drop
+        self.ui.add_message(f"Found {gold_drop} gold!", Config.YELLOW)
+
+    def process_enemy_attack(self, enemy):
+        """Enemies strike the player in real time when close enough"""
+        attack_result = enemy.attack(self.player)
+        if attack_result['hit']:
+            damage = self.player.take_damage(attack_result['damage'])
+            msg = f"{enemy.name} hits you for {damage} damage!"
+            if attack_result.get('critical'):
+                msg = f"CRITICAL! {msg}"
+            self.ui.add_message(msg, Config.RED)
+        else:
+            self.ui.add_message(f"{enemy.name} misses you!", Config.GRAY)
+
         if not self.player.is_alive():
             self.state = GameState.GAME_OVER
             self.ui.add_message("You have been defeated!", Config.RED)
-            return
-
-        if not self.combat_system.enemy.is_alive:
-            # Victory!
-            enemy = self.combat_system.enemy
-            xp_gained = enemy.xp_reward
-            self.player.gain_experience(xp_gained)
-            self.player.total_kills += 1
-
-            self.ui.add_message(f"Defeated {enemy.name}! Gained {xp_gained} XP.", Config.YELLOW)
-
-            # Remove enemy from dungeon
-            self.dungeon.remove_enemy(enemy)
-
-            # Drop loot
-            gold_drop = Dice.roll_range(enemy.gold_reward[0], enemy.gold_reward[1])
-            self.player.inventory.gold += gold_drop
-            self.ui.add_message(f"Found {gold_drop} gold!", Config.YELLOW)
-
-            self.state = GameState.PLAYING
 
     def update_enemies(self):
-        """Update enemy positions and AI"""
-        for enemy in self.dungeon.enemies:
-            if enemy.is_alive and not enemy.is_in_combat:
-                # Update AI state
-                enemy.update_ai(self.player.position, self.dungeon)
+        """Update enemy positions and AI with real-time behavior"""
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_enemy_update < self.enemy_move_delay:
+            return
 
-                # Check if enemy moved adjacent to player
-                if enemy.distance_to(self.player.position) <= 1.5:
-                    # Start combat
-                    self.start_combat(enemy)
-                    break
+        self.last_enemy_update = current_time
+
+        for enemy in list(self.dungeon.enemies):
+            if not enemy.is_alive:
+                continue
+
+            # Update AI state
+            enemy.update_ai(self.player.position, self.dungeon)
+
+            # Enemy attack check
+            if enemy.distance_to(self.player.position) <= 1.5:
+                last_attack = getattr(enemy, "last_attack_time", 0)
+                cooldown = getattr(enemy, "attack_cooldown", self.enemy_attack_delay)
+                if current_time - last_attack >= cooldown:
+                    self.process_enemy_attack(enemy)
+                    enemy.last_attack_time = current_time
 
     def update(self):
         """Update game state"""
@@ -493,8 +489,8 @@ class Game:
         self.ui.update(self.dt)
 
         if self.state == GameState.PLAYING:
-            # Check for stairs interaction via > or < keys (handled in input)
-            pass
+            self.handle_continuous_movement()
+            self.update_enemies()
         elif self.state == GameState.COMBAT:
             # Combat updates handled by combat system
             pass

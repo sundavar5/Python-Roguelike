@@ -257,14 +257,14 @@ class Dungeon:
     def get_enemy_at(self, x: int, y: int) -> Optional[Enemy]:
         """Get enemy at given position"""
         for enemy in self.enemies:
-            if enemy.is_alive and enemy.position.x == x and enemy.position.y == y:
+            if enemy.is_alive and int(enemy.position.x) == x and int(enemy.position.y) == y:
                 return enemy
         return None
     
     def get_item_at(self, x: int, y: int) -> Optional[Item]:
         """Get item at given position"""
         for pos, item in self.items:
-            if pos.x == x and pos.y == y:
+            if int(pos.x) == x and int(pos.y) == y:
                 return item
         return None
     
