@@ -1,3 +1,2 @@
-#!/bin/bash
-echo "Starting Dungeon Delver..."
-python3 main.py
+#!/usr/bin/env bash
+python -m roguelike3d
