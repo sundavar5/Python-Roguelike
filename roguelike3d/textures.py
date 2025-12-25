@@ -36,6 +36,34 @@ def _texture_from_palette(base: Color, accent: Color, width: int = 64, height: i
     return image.get_texture()
 
 
+def generate_sprite_texture(seed: int, color: Color, width: int = 32, height: int = 32) -> pyglet.image.Texture:
+    rng = random.Random(seed)
+    pixels = [0] * (width * height * 4)
+
+    # Generate symmetrical noise
+    for y in range(height):
+        for x in range(width // 2):
+            val = rng.random()
+            if val > 0.5:
+                # Mirror
+                pixels[(y * width + x) * 4] = color[0]
+                pixels[(y * width + x) * 4 + 1] = color[1]
+                pixels[(y * width + x) * 4 + 2] = color[2]
+                pixels[(y * width + x) * 4 + 3] = 255
+
+                pixels[(y * width + (width - 1 - x)) * 4] = color[0]
+                pixels[(y * width + (width - 1 - x)) * 4 + 1] = color[1]
+                pixels[(y * width + (width - 1 - x)) * 4 + 2] = color[2]
+                pixels[(y * width + (width - 1 - x)) * 4 + 3] = 255
+            else:
+                # Transparent
+                pass
+
+    data = bytes(pixels)
+    image = pyglet.image.ImageData(width, height, "RGBA", data)
+    return image.get_texture()
+
+
 def _stone_palette() -> Color:
     return random.choice([(80, 80, 90), (70, 70, 60), (95, 90, 85)])
 
