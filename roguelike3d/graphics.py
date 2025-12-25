@@ -7,6 +7,24 @@ import pyglet
 Vec3 = Tuple[float, float, float]
 
 
+def draw_billboard(position: Vec3, size: float, texture: pyglet.image.Texture, yaw: float) -> None:
+    x, y, z = position
+    s = size
+    gl = pyglet.gl
+    gl.glPushMatrix()
+    gl.glTranslatef(x, y, z)
+    gl.glRotatef(yaw, 0, 1, 0)
+
+    gl.glBindTexture(gl.GL_TEXTURE_2D, texture.id)
+    gl.glBegin(gl.GL_QUADS)
+    gl.glTexCoord2f(0, 0); gl.glVertex3f(-s, -s, 0)
+    gl.glTexCoord2f(1, 0); gl.glVertex3f(s, -s, 0)
+    gl.glTexCoord2f(1, 1); gl.glVertex3f(s, s, 0)
+    gl.glTexCoord2f(0, 1); gl.glVertex3f(-s, s, 0)
+    gl.glEnd()
+    gl.glPopMatrix()
+
+
 def draw_cube(position: Vec3, size: float, texture: pyglet.image.Texture) -> None:
     x, y, z = position
     s = size
